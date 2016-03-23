@@ -76,8 +76,10 @@ public class linkDialog
 		okButton.addActionListener(new ActionListener(){
 			@Override public void actionPerformed(ActionEvent e){
 				//do stuff here Non-Dimming
-				sendLinkCommand("ACTIVATELINK", linkid);
-					System.out.println("Got OK");
+				final int ACTIVATELINK = 32;
+				
+				sendLinkCommand(ACTIVATELINK, Integer.parseInt(linkid));
+			//		System.out.println("Got OK");
 
 				for (MouseListener l : listeners)
 				{
@@ -111,35 +113,21 @@ public class linkDialog
 	}	 
 
 
-	public static void sendLinkCommand(String action, String link )
+	public static void sendLinkCommand(int action, int link )
 	{
-		String urlTemp = null;
+		moduleVariables mvInput = new moduleVariables();
 
-		urlTemp = "http://" + upbClientWindow.upbServerIPAddress + ":" + upbClientWindow.upbServerCommandPort + "/upb?action=" + action + "&linkid=" + link;
-		
-		URL oracle = null;
-		try {
-			//	oracle = new URL("http://192.168.1.104:8080/upb?action=goto&moduleid=141&level=100");
-			oracle = new URL(urlTemp);
-		} catch (MalformedURLException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}
-		URLConnection yc;
-		try {
-			yc = oracle.openConnection();
-			BufferedReader in;
-			in = new BufferedReader(new InputStreamReader(
-					yc.getInputStream()));
-			String inputLine;
-			while ((inputLine = in.readLine()) != null) 
-				System.out.println(inputLine);
-			in.close();
-		} catch (IOException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}
+		mvInput.clear();
+		mvInput.moduleid = link;
+		mvInput.sourceid = Integer.parseInt(upbClientWindow.sourceID);
+		mvInput.networkid = Integer.parseInt(upbClientWindow.networkID);;
+		mvInput.isDevice = false;
+		mvInput.action = action;  
+		buildCmd bc = new buildCmd();
 
+		bc.buildCmd(mvInput);
+		String	myCmd = mvInput.message.toString();
+		upbClientWindow.buildJSONCommand(0,myCmd, 0);
 	}
 
 

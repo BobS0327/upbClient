@@ -25,89 +25,103 @@ import javax.swing.RowSorter;
 import javax.swing.SortOrder;
 
 import java.awt.BorderLayout;
-import java.awt.Dimension;
 
 import javax.swing.JLabel;
-import javax.swing.JOptionPane;
-import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.SwingConstants;
-import javax.swing.border.BevelBorder;
 import javax.swing.table.DefaultTableModel;
 import javax.swing.table.TableColumn;
-import javax.swing.table.TableColumnModel;
+
+import org.json.JSONException;
+import org.json.JSONObject;
 
 import java.awt.Font;
-import java.awt.Frame;
-import java.awt.Point;
-
-import javax.swing.BoxLayout;
 import javax.swing.DefaultRowSorter;
 import javax.swing.JButton;
-import javax.swing.JDialog;
 
-import java.io.BufferedInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.PrintWriter;
-import java.net.MalformedURLException;
-import java.net.URL;
-import java.nio.channels.Channels;
-import java.nio.channels.FileChannel;
-import java.nio.channels.ReadableByteChannel;
-import java.sql.Connection;
-import java.sql.Date;
-import java.sql.DriverManager;
-import java.sql.ResultSet;
-import java.sql.Statement;
 import java.text.DateFormat;
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Calendar;
+import java.util.Date;
 import java.util.Properties;
 import java.awt.event.ActionListener;
 import java.awt.event.ActionEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
-import java.awt.event.MouseListener;
-import upbClient.FileServerClient;
 
-import javax.swing.JSlider;
 import java.awt.Color;
-import java.awt.SystemColor;
 import javax.swing.UIManager;
 
+import com.pubnub.api.PubnubException;
+import pubNub.pubNubMethods;
+
 public class upbClientWindow {
-
 	private static JFrame frame;
-	private static JTable table;
-	private static JTable linkTable;
-	private JButton btnNewButton;
-	private JButton btnNewButton_1;
-	private JButton btnNewButton_2;
-	private JButton btnReloadDatabaseButton;
-
-	public String configProperties = "C:/utils/Java/workspaceMars2/upbClient/src/config.properties";
+	public static JTable devicetable;
+	public static JTable linktable;
+	public static String configProperties = "config.properties";
+//	linux
+//	public static String configProperties = "/home/bob/Temp/upbClient/bin/config.properties";
 	public static String serverdbName; 
 	public static String clientdbName; 
+	public static String clientIPAddress;
 	public static String upbServerIPAddress; 
 	public static String upbServerCommandPort; 
 	public static int upbServerDownloadPort;
+	public static String networkInterface;
+	public static String pubNubChannel;
+	public static String pubNubSubscribeKey;
+	public static String pubNubPublishKey;
+	public static String networkID;
+	public static String sourceID;
 	public static String temp = null;
-	private JTable table_1;
-	public static JLabel StatusLabel;
 
-	/**
-	 * Launch the application.
-	 */
+	public static JLabel StatusLabel;
+	static pubNubMethods  pnMethods = null; 
+	static boolean bFirstTime = true;
+	static boolean bLinkFirstTime = true;
+	static int totalRecords = 0;
+	static int totalLinkRecords = 0;
+	static int tempreccount = 0;
+	public static int templinkreccount = 0;
+	static int recnum = 0;
+
 	public static void main(String[] args) {
 		EventQueue.invokeLater(new Runnable() {
 			public void run() {
 				try {
+					
+					if(args.length > 0)
+					{
+						configProperties = args[0];
+						File varFile = new File(configProperties);
+						if(varFile.exists() != true)
+						{
+							System.out.println("Cannot locate" + args[0] + " defaulting to config.properties");
+							configProperties = "config.properties";	 
+						}
+						else
+						{
+							System.out.println("Using :" + args[0]);	
+						}
+					}
+					else
+					{
+						System.out.println("Using : config.properties");	
+					}
+
+					
+					
+					
+					
+					
+					
 					upbClientWindow window = new upbClientWindow();
 					window.frame.setVisible(true);
 				} catch (Exception e) {
@@ -129,198 +143,190 @@ public class upbClientWindow {
 		try {
 			fileInput = new FileInputStream(configfile);
 		} catch (FileNotFoundException e) {
-			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
 		try {
 			properties.load(fileInput);
 			fileInput.close();
 		} catch (IOException e) {
-			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
-
+		networkInterface = properties.getProperty("networkinterface");
 		serverdbName = properties.getProperty("serverdbname");
 		clientdbName = properties.getProperty("clientdbname");
 		upbServerIPAddress = properties.getProperty("upbserveripaddress");
 		upbServerCommandPort = properties.getProperty("upbservercommandport");
 		temp = properties.getProperty("upbserverdownloadport");
-		upbServerDownloadPort  =  Integer.parseInt(temp); 
-
+		upbServerDownloadPort  =  Integer.parseInt(temp);
+		pubNubChannel = properties.getProperty("pubnubchannelname");
+		pubNubSubscribeKey = properties.getProperty("pubnubsubscribekey");
+		pubNubPublishKey = properties.getProperty("pubnubpublishkey");
+		networkID = properties.getProperty("networkid");
+		sourceID = properties.getProperty("sourceid");
 	}
 
-	public static void loadLinkTable( String dbName, JTable table)
-	{
-		Connection c = null;
-		Statement stmt = null;
-		DefaultTableModel dm = (DefaultTableModel) table.getModel();
-		deleteAllRows(dm);
-		for( int nRow = 0 ; nRow < table.getRowCount() ; nRow++ ){
-			for( int nColumn = 0 ; nColumn < table.getColumnCount(); nColumn++ ){
-				table.setValueAt("" , nRow , nColumn );
-			}
+	public static void loadDeviceTablefromPubNum( JTable table, String jsonString)
+	{ 
+		String source = null, dest = null;
+		String jsontimestamp = null, deviceid = null, linkid = null;
+		String devicename = null, linkname = null, kind = null, timestamp = null;
+		String room = null, level = null;
+		String desc = null;
+		String info = null;
+		int status = 0;
+		int action = 0, recnum = 0, reccount = 0;
+
+		JSONObject jsonObject = null;
+		try {
+			jsonObject = new JSONObject(jsonString);
+		} catch (JSONException e1) {
+			e1.printStackTrace();
 		}
-		table.repaint(); // This will reflect the changes (empty table) on the screen
 
 		try {
-			Class.forName("org.sqlite.JDBC");
-			String conn = "jdbc:sqlite:" + dbName;
-			c = DriverManager.getConnection(conn);
-			c.setAutoCommit(false);
-			stmt = c.createStatement();
-			String sel = "SELECT * FROM links;";
-			ResultSet rs = stmt.executeQuery(sel);
-			while (rs.next()) 
-			{
-				int mod = 		rs.getInt("linkidnum");
-				String id = Integer.toString(mod);
-				String name = rs.getString("linkname");	
-				DefaultTableModel model = (DefaultTableModel) table.getModel();
-				model.addRow(new Object[]{id, name});
+			source = (String) jsonObject.get("source");
+			dest = (String) jsonObject.get("destination");
+			action =  (int) jsonObject.get("action");
+			recnum =  (int) jsonObject.get("recnum");
+
+			room = (String)jsonObject.get("room");
+			level = (String)jsonObject.get("level");
+			jsontimestamp = (String)jsonObject.get("jsontimestamp");
+			deviceid  = (String) jsonObject.get("deviceid");
+			linkid = (String) jsonObject.get("linkid");
+			devicename = (String) jsonObject.get("devicename");
+			linkname = (String) jsonObject.get("linkname");
+			kind = (String) jsonObject.get("kind");
+			desc = (String) jsonObject.get("desc");
+			status = (int) jsonObject.get("status");
+			timestamp = (String) jsonObject.get("timestamp");
+			info = (String) jsonObject.getString("info");
+
+		} catch (JSONException e) {
+			e.printStackTrace();
+		}
+		if(bFirstTime == true)
+		{
+			try {
+				totalRecords =  (int) jsonObject.get("reccount");
+			} catch (JSONException e) {
+				e.printStackTrace();
+			} 
+			DefaultTableModel dm = (DefaultTableModel) table.getModel();
+			deleteAllRows(dm);
+			for( int nRow = 0 ; nRow < table.getRowCount() ; nRow++ ){
+				for( int nColumn = 0 ; nColumn < table.getColumnCount(); nColumn++ ){
+					table.setValueAt("" , nRow , nColumn );
+				}
 			}
-			rs.close();
-			stmt.close();
-			c.close();
-		} catch ( Exception e ) {
-			System.err.println( e.getClass().getName() + ": " + e.getMessage() );
-			System.exit(0);
+			//		table.repaint(); // This will reflect the changes (empty table) on the screen
+			bFirstTime = false;
+		}
+		DefaultTableModel model = (DefaultTableModel) table.getModel();
+		if ("".equals(info))
+		{ 
+			if(status == 0)
+			{
+				temp = timestamp +" Device turned off";
+			}		 
+			else
+			{
+				temp = timestamp +" Device turned on";	
+			}
+		}
+		else
+		{
+			temp =  info; 
+		}
+		model.addRow(new Object[]{deviceid, devicename , room, desc, status, level, temp });
+		++tempreccount;
+		if(tempreccount == totalRecords)
+		{
+			bFirstTime = true;
+			tempreccount = 0;
 		}
 	}
 
-	public static void loadTable( String dbName, JTable table)
+	public static void loadLinkTablefromPubNub( JTable table2, String jsonString)
 	{
-		int index = 0;
-		int st = 0;
-		int lev = 0;
-		Connection c = null;
-		Statement stmt = null;
-		Statement stmt1 = null;
-		Statement stmt2 = null;
-		DefaultTableModel dm = (DefaultTableModel) table.getModel();
-		deleteAllRows(dm);
-		for( int nRow = 0 ; nRow < table.getRowCount() ; nRow++ ){
-			for( int nColumn = 0 ; nColumn < table.getColumnCount(); nColumn++ ){
-				table.setValueAt("" , nRow , nColumn );
-			}
+		String source = null, dest = null;
+		String jsontimestamp = null, deviceid = null, linkid = null;
+		String devicename = null, linkname = null, kind = null, timestamp = null;
+		String room = null, level = null;
+		String desc = null;
+		String info = null;
+		int status = 0;
+		int action = 0, recnum = 0, reccount = 0;
+
+		JSONObject jsonObject = null;
+		try {
+			jsonObject = new JSONObject(jsonString);
+		} catch (JSONException e1) {
+			e1.printStackTrace();
 		}
-		table.repaint(); // This will reflect the changes (empty table) on the screen
 
 		try {
-			Class.forName("org.sqlite.JDBC");
-			String conn = "jdbc:sqlite:" + dbName;
-			c = DriverManager.getConnection(conn);
-			c.setAutoCommit(false);
-			stmt = c.createStatement();
-			stmt1 = c.createStatement();
-			stmt2 = c.createStatement();
-			String sel = "SELECT * FROM devices;";
-			String sel1 = null;
-			String status = null;
-			String level = null;
-			String info = null;
-			String timeStamp = null;
-			String temp = null;
-			int manf = 0, prod = 0;
-			ResultSet rs = stmt.executeQuery(sel);
+			source = (String) jsonObject.get("source");
+			dest = (String) jsonObject.get("destination");
+			action =  (int) jsonObject.get("action");
+			recnum =  (int) jsonObject.get("recnum");
 
-			String desc = null;
-			while (rs.next()) 
-			{
-				int mod = 		rs.getInt("moduleid");
-				String id = Integer.toString(mod);
-				String name = rs.getString("devname");	
-				String room = rs.getString("roomname");	
-				manf = rs.getInt("manufacturer");
-				prod = rs.getInt("prodid");
-				sel1 = "SELECT * FROM products WHERE manufacturer = " + manf + " AND prodid = " + prod;	
-				ResultSet	rs1 = stmt1.executeQuery(sel1);
-				while (rs1.next()) 
-				{
-					desc = rs1.getString("proddesc");	
-				}
-				rs1.close();
-				String 	sel2 = "SELECT * FROM devicestatus WHERE moduleid = " + mod; 	
-				ResultSet	rs2 = stmt2.executeQuery(sel2);
-				while (rs2.next()) 
-				{
-					timeStamp = rs2.getString("upddatetime");
-					info = rs2.getString("info");
-					lev = rs2.getInt("level");
-					if(desc.contains("Non-Dimming"))
-					{
-						level = "N/A";
-					}
-					else
-					{
-						level = 	Integer.toString(lev);
-					}
-					st = rs2.getInt("status");
-					if(st == 0)
-					{
-						status = "Off";
-					}
-					else
-					{
-						status = "On";
-					}
-				}
-				rs2.close();
-				DefaultTableModel model = (DefaultTableModel) table.getModel();
-				if ("".equals(info))
-				{ 
-					if(st == 0)
-					{
-						temp = timeStamp +" Device turned off";
-					}		 
-					else
-					{
-						temp = timeStamp +" Device turned on";	
-					}
-					//	temp = "No Activity";	
-				}
-				else
-				{
-					temp = timeStamp +" " + info; 
+			room = (String)jsonObject.get("room");
+			level = (String)jsonObject.get("level");
+			jsontimestamp = (String)jsonObject.get("jsontimestamp");
+			deviceid  = (String) jsonObject.get("deviceid");
+			linkid = (String) jsonObject.get("linkid");
+			devicename = (String) jsonObject.get("devicename");
+			linkname = (String) jsonObject.get("linkname");
+			kind = (String) jsonObject.get("kind");
+			desc = (String) jsonObject.get("desc");
+			status = (int) jsonObject.get("status");
+			timestamp = (String) jsonObject.get("timestamp");
+			info = (String) jsonObject.getString("info");
 
-				}
-				model.addRow(new Object[]{id, name, room, desc, status, level, temp });
-			}
-
-			rs.close();
-			stmt.close();
-			stmt1.close();
-			stmt2.close();
-			c.close();
-		} catch ( Exception e ) {
-			System.err.println( e.getClass().getName() + ": " + e.getMessage() );
-			System.exit(0);
+		} catch (JSONException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		if(bLinkFirstTime == true)
+		{
+			try {
+				totalLinkRecords =  (int) jsonObject.get("reccount");
+			} catch (JSONException e) {
+				e.printStackTrace();
+			} 	
+			DefaultTableModel dm = (DefaultTableModel) table2.getModel();
+			deleteAllRows(dm);
+			bLinkFirstTime = false;
+		}
+		table2.repaint(); // This will reflect the changes (empty table) on the screen
+		DefaultTableModel model = (DefaultTableModel) table2.getModel();
+		model.addRow(new Object[]{linkid, linkname});
+		++templinkreccount;
+		if(templinkreccount == totalLinkRecords)
+		{
+			bLinkFirstTime = true;
+			templinkreccount = 0;
 		}
 	}
-	/**
-	 * Create the application.
-	 */
+
+
 	public upbClientWindow() {
 		initialize();
 	}
 
-	/**
-	 * Initialize the contents of the frame.
-	 */
 	private void initialize() {
 		readConfigFile();
+		pnMethods = new pubNubMethods();
+		try {
+			pnMethods.Subscribe();
+		} catch (PubnubException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
 
-		File f = new File(clientdbName);
-		if(f.exists() == false) { 
-
-			FileServerClient client = new FileServerClient();
-
-			try {
-				client.receiveFileFromServer();
-			} catch (Exception e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-			}
-		}	
+		// Dummy method, just executed to get IPAddress of client
+		String ipAndHostname = getIPAddressAndHostname.getIPAddresAndHostname();	
 		frame = new JFrame();
 		frame.setBounds(100, 100, 1193, 767);
 		frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
@@ -330,41 +336,41 @@ public class upbClientWindow {
 		int linkRows = 0;
 		int linkColumns = 2;
 
-		table = new JTable(numberOfRows,numberOfColumns)
+		devicetable = new JTable(numberOfRows,numberOfColumns)
 		{
 			public boolean isCellEditable(int row, int column)
 			{
 				return false;//you can set which column/row can be edited.
 			}
 		};
-		table.addMouseListener(new MouseAdapter() {
+		devicetable.addMouseListener(new MouseAdapter() {
 			@SuppressWarnings("deprecation")
 			@Override
 			public void mouseClicked(MouseEvent e) {
-				int row = table.rowAtPoint(e.getPoint());
-				int col = table.columnAtPoint(e.getPoint());
+				int row = devicetable.rowAtPoint(e.getPoint());
+				int col = devicetable.columnAtPoint(e.getPoint());
 				if (row >= 0 && col >= 0) {
 
-					int retRow =  	table.convertRowIndexToModel( row );
-					Object obj0 = GetData(table, retRow, 0);
-					Object obj1 = GetData(table, retRow, 1);
-					Object obj2 = GetData(table, retRow, 2);
-					Object obj3 = GetData(table, retRow, 3);
-					Object obj4 = GetData(table, retRow, 4);
-					Object obj5 = GetData(table, retRow, 5);
+					int retRow =  	devicetable.convertRowIndexToModel( row );
+					Object obj0 = GetData(devicetable, retRow, 0);
+					Object obj1 = GetData(devicetable, retRow, 1);
+					Object obj2 = GetData(devicetable, retRow, 2);
+					Object obj3 = GetData(devicetable, retRow, 3);
+					Object obj4 = GetData(devicetable, retRow, 4);
+					Object obj5 = GetData(devicetable, retRow, 5);
 
 					upbClient.deviceDialog dD = new upbClient.deviceDialog();
-					dD.deviceDialog(obj0.toString(),obj1.toString(),obj2.toString(),obj3.toString(),obj4.toString(),obj5.toString(), table );
+					dD.deviceDialog(obj0.toString(),obj1.toString(),obj2.toString(),obj3.toString(),obj4.toString(),obj5.toString(), devicetable );
 				}
 			}
 		});
 
-		table.setBounds(1, 26, 698, 182);
+		devicetable.setBounds(1, 26, 698, 182);
 		String header[] = {"id", "name", "room", "type", "status", "level", "info"};
 
-		for(int i=0;i<table.getColumnCount();i++)
+		for(int i=0;i<devicetable.getColumnCount();i++)
 		{
-			TableColumn column = table.getTableHeader().getColumnModel().getColumn(i);
+			TableColumn column = devicetable.getTableHeader().getColumnModel().getColumn(i);
 			switch(i) 
 			{
 			case 0:
@@ -387,47 +393,17 @@ public class upbClientWindow {
 			}
 			column.setHeaderValue(header[i]);
 		} 
-
-		frame.getContentPane().add(table, BorderLayout.CENTER);
-
-		JScrollPane scrollPane = new JScrollPane(table);
+		frame.getContentPane().add(devicetable, BorderLayout.CENTER);
+		JScrollPane scrollPane = new JScrollPane(devicetable);
 		scrollPane.setBounds(32, 21, 1126, 278);
 		frame.getContentPane().add(scrollPane);
-
 		JLabel lblNewLabel = new JLabel("upbClient Devices");
 		lblNewLabel.setBounds(0, 0, 1177, 21);
 		lblNewLabel.setFont(new Font("Tahoma", Font.PLAIN, 17));
 		lblNewLabel.setHorizontalAlignment(SwingConstants.CENTER);
-		frame.getContentPane().add(lblNewLabel);
-
-		btnReloadDatabaseButton = new JButton("Refresh Device & Link Tables");
-		btnReloadDatabaseButton.addActionListener(new ActionListener() {
-			public void actionPerformed(ActionEvent arg0) {
-				FileServerClient client = new FileServerClient();
-
-				try {
-					client.receiveFileFromServer();
-					loadTable( clientdbName, table);
-					table.setAutoCreateRowSorter(true);
-					
-					loadLinkTable( clientdbName, table_1);
-					table_1.setAutoCreateRowSorter(true);
-					
-					SetStatusText("Device and Link tables successfully updated");
-					
-				} catch (Exception e) {
-					
-					SetStatusText("Device and Link update FAILED!!!!");
-					e.printStackTrace();
-				}
-			}
-		});
-		btnReloadDatabaseButton.setBounds(455, 560, 220, 23);
-		frame.getContentPane().add(btnReloadDatabaseButton);
-		loadTable( clientdbName, table);
-		table.setAutoCreateRowSorter(true);
+		devicetable.setAutoCreateRowSorter(true);
 		String header1[] = {"id", "name"};
-		table_1 = new JTable(linkRows,linkColumns)
+		linktable = new JTable(linkRows,linkColumns)
 		{
 			public boolean isCellEditable(int row, int column)
 			{
@@ -435,9 +411,9 @@ public class upbClientWindow {
 			}
 		};
 
-		for(int i=0;i<table_1.getColumnCount();i++)
+		for(int i=0;i<linktable.getColumnCount();i++)
 		{
-			TableColumn linkcolumn = table_1.getTableHeader().getColumnModel().getColumn(i);
+			TableColumn linkcolumn = linktable.getTableHeader().getColumnModel().getColumn(i);
 			switch(i) 
 			{
 			case 0:
@@ -454,56 +430,62 @@ public class upbClientWindow {
 		JScrollPane scrollPane_1 = new JScrollPane();
 		scrollPane_1.setBounds(32, 383, 1126, 166);
 		frame.getContentPane().add(scrollPane_1);
-		scrollPane_1.setViewportView(table_1);
-		table_1.setAutoCreateRowSorter(true);
-		table_1.addMouseListener(new MouseAdapter() {
+		scrollPane_1.setViewportView(linktable);
+		linktable.setAutoCreateRowSorter(true);
+		linktable.addMouseListener(new MouseAdapter() {
 			@Override
 			public void mouseClicked(MouseEvent e) {
-				int row = table_1.rowAtPoint(e.getPoint());
-				int col = table_1.columnAtPoint(e.getPoint());
+				int row = linktable.rowAtPoint(e.getPoint());
+				int col = linktable.columnAtPoint(e.getPoint());
 				if (row >= 0 && col >= 0) {
 
-					int retRow =  	table_1.convertRowIndexToModel( row );
-					Object obj0 = GetData(table_1, retRow, 0);
-					Object obj1 = GetData(table_1, retRow, 1);
+					int retRow =  	linktable.convertRowIndexToModel( row );
+					Object obj0 = GetData(linktable, retRow, 0);
+					Object obj1 = GetData(linktable, retRow, 1);
 					upbClient.linkDialog dD = new upbClient.linkDialog();
-					dD.linkDialog(obj0.toString(),obj1.toString(), table_1 );
+					dD.linkDialog(obj0.toString(),obj1.toString(), linktable );
 				}
 			}
 		});
 
-		table_1.setBackground(new Color(255, 255, 255));
-		loadLinkTable( clientdbName, table_1);
+		linktable.setBackground(new Color(255, 255, 255));
+		//	loadLinkTable( clientdbName, linktable);
 		JLabel lblUpbclientSceneslinks = new JLabel("upbClient Scenes (Links)");
 		lblUpbclientSceneslinks.setHorizontalAlignment(SwingConstants.CENTER);
 		lblUpbclientSceneslinks.setFont(new Font("Tahoma", Font.PLAIN, 17));
 		lblUpbclientSceneslinks.setBounds(10, 355, 1157, 29);
 		frame.getContentPane().add(lblUpbclientSceneslinks);
-		
+
 		StatusLabel = new JLabel("");
 		StatusLabel.setBorder(UIManager.getBorder("TextField.border"));
 		StatusLabel.setFont(new Font("Tahoma", Font.PLAIN, 17));
 		StatusLabel.setBounds(32, 688, 1126, 29);
 		frame.getContentPane().add(StatusLabel);
-	
 
-		DefaultRowSorter sorter = ((DefaultRowSorter)table.getRowSorter());
+		DefaultRowSorter sorter = ((DefaultRowSorter)devicetable.getRowSorter());
 		ArrayList list = new ArrayList();
 		list.add( new RowSorter.SortKey(0, SortOrder.ASCENDING) );
 		sorter.setSortKeys(list);
 		sorter.sort();
-	
-		    frame.setLocationRelativeTo(null);
-		    frame.setVisible(true);
-		   
-	
-	JLabel lblStatus = new JLabel("Status:");
-	lblStatus.setFont(new Font("Tahoma", Font.PLAIN, 16));
-	lblStatus.setBounds(32, 656, 88, 21);
-	frame.getContentPane().add(lblStatus);
-	
-	SetStatusText("Program started");
-	
+
+		frame.setLocationRelativeTo(null);
+		frame.setVisible(true);
+
+		JLabel lblStatus = new JLabel("Status:");
+		lblStatus.setFont(new Font("Tahoma", Font.PLAIN, 16));
+		lblStatus.setBounds(32, 656, 88, 21);
+		frame.getContentPane().add(lblStatus);
+
+		JButton btnPubnubLoad = new JButton("PubNub Load");
+		btnPubnubLoad.addActionListener(new ActionListener() {
+			public void actionPerformed(ActionEvent arg0) {
+				buildJSONCommand(1, "", -1);
+				buildJSONCommand(3, "", -1);
+			}
+		});
+		btnPubnubLoad.setBounds(797, 560, 148, 23);
+		frame.getContentPane().add(btnPubnubLoad);
+		SetStatusText("Program started");
 	}
 
 	public static void deleteAllRows(final DefaultTableModel model) {
@@ -514,18 +496,15 @@ public class upbClientWindow {
 
 	public static void SetStatusText(String statusText)
 	{
-		 DateFormat df = new SimpleDateFormat("dd/MM/yy HH:mm:ss");
-		    Calendar calobj = Calendar.getInstance();
-		    	  
-		       String temp = calobj.getTime().toString() + "  " + statusText;
-	StatusLabel.setText(temp);
+		Calendar calobj = Calendar.getInstance();
+		String temp = calobj.getTime().toString() + "  " + statusText;
+		StatusLabel.setText(temp);
 	}
 	public static final String stackTrace(Throwable e)
 	{
 		String foo = null;
 		try
 		{
-			// And show the Error Screen.
 			ByteArrayOutputStream ostr = new ByteArrayOutputStream();
 			e.printStackTrace( new PrintWriter(ostr,true) );
 			foo = ostr.toString();
@@ -536,4 +515,76 @@ public class upbClientWindow {
 		}
 		return foo;
 	}
+	public static String getDateandTime()
+	{
+		long currentDateTime = System.currentTimeMillis();
+		Date now = new Date(currentDateTime);
+		DateFormat formatter = DateFormat.getDateTimeInstance(); // Date and time
+		return ( formatter.format(now));
+	}
+	public static void buildJSONCommand(int cmd, String executableCmd, int deviceid)
+	{
+		JSONObject obj = new JSONObject( );
+
+		try {
+			// Used for testing only FIX it
+			//	obj.put("source", "192.168.1.255");
+			obj.put("source", upbClientWindow.clientIPAddress);
+			obj.put("destination", upbClientWindow.upbServerIPAddress);
+			// retrieve all devices = 1
+			obj.put("room", "");
+			obj.put("level",  "");
+			// action:
+			// 0 command
+			// 1 retrieve all devices & device status
+			// 2  retrieve one device
+			// 3 retrieve all links
+			obj.put("action", new Integer(cmd));
+			obj.put("recnum", new Integer(1));
+			obj.put("reccount", new Integer(1));
+			obj.put("jsontimestamp", getDateandTime());
+			obj.put("deviceid", Integer.toString(deviceid));
+			obj.put("linkid", "");
+			obj.put("devicename", "");
+			obj.put("linkname", "");
+			obj.put("kind", "");
+			obj.put("info", "");
+			obj.put("status", new Integer(0));
+			obj.put("timestamp", "");
+			obj.put("room", "");
+			obj.put("level", "");
+			obj.put("recnum", new Integer(1));
+			obj.put("reccount", new Integer(1));
+			obj.put("desc", "");
+			obj.put("info", "");
+			obj.put("cmd",  executableCmd);
+		} catch (JSONException e1) {
+			e1.printStackTrace();
+		}
+		try {
+			pnMethods.Publish(obj.toString());	
+		} catch (PubnubException e) {
+			e.printStackTrace();
+		}
+	}
+	public static void updateRow(String deviceID, String[] data) {
+		boolean bUpdatedRow = false;
+		DefaultTableModel dtm = (DefaultTableModel) devicetable.getModel();
+	    if (data.length > 7)
+	        throw new IllegalArgumentException("data[] is to long");
+	    for (int i = 0; i < dtm.getRowCount(); i++)
+	        if (dtm.getValueAt(i, 0).equals(deviceID))
+	        {
+	        	  dtm.setValueAt(data[4], i, 4);
+	        	  dtm.setValueAt(data[5], i, 5);
+	        	  dtm.setValueAt(data[6], i, 6);
+	        	bUpdatedRow = true;
+	        }
+	    if(bUpdatedRow == false)
+	    {
+	    dtm.addRow(new Object[]{data[0], data[1], data[2], data[3], data[4], data[5], data[6]});
+	    }
+	}
+
+
 }

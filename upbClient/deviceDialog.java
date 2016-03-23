@@ -38,7 +38,6 @@ import javax.swing.event.ChangeListener;
 
 public class deviceDialog
 {
-
 	public static void deviceDialog(String  moduleid, String name, String room, String type, String status, String level, JTable t) {
 		// Create and set up a frame window
 		MouseListener[] listeners = t.getMouseListeners();
@@ -51,7 +50,6 @@ public class deviceDialog
 		JFrame frame = new JFrame("upbClient Device Update");
 
 		frame.setSize(800, 500);
-
 		frame.setLayout(new GridLayout(12, 1, 10,10));
 		frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 		frame.setResizable(false);
@@ -153,28 +151,31 @@ public class deviceDialog
 		okButton.addActionListener(new ActionListener(){
 			@Override public void actionPerformed(ActionEvent e){
 				//do stuff here Non-Dimming
+
+				final int  GOTO  = 34; // Decimal value of 0x22
 				int iLevel = slider.getValue();
 				int iFadeRate = faderateslider.getValue();
 
-				boolean doesContain = type.toLowerCase().contains("Non-Dimming");
+				int dev = Integer.parseInt(moduleid);
+				boolean doesContain = type.toLowerCase().contains("non-dimming");
 				if(doesContain == false)
 				{
-					if(onRadioButton.isSelected() == true)
-					{
-						sendDeviceCommand("goto", moduleid, "100", "");
-					}
-					else
-					{
-						sendDeviceCommand("goto", moduleid, "0", "");  
-					}
+					// Dimming
+					System.out.println("dimming");
+					sendDeviceCmd(GOTO, dev, iLevel, iFadeRate);
 				}
 				else
 				{
-					// Non-Dimming
-					sendDeviceCommand("goto", moduleid, Integer.toString(iLevel), ""); 
+					System.out.println("non-dimming");
+					if(onRadioButton.isSelected() == true)
+					{
+						sendDeviceCmd(GOTO,dev, 100, 255);
+					}
+					else
+					{
+						sendDeviceCmd(GOTO, dev, 0, 255);  
+					}
 				}
-				System.out.println("Got OK");
-
 				for (MouseListener l : listeners)
 				{
 					t.addMouseListener(l);
@@ -187,7 +188,7 @@ public class deviceDialog
 			@Override public void actionPerformed(ActionEvent e){
 				//do stuff here
 				System.out.println("Got Cancel");
-
+				//	sendCmd(0x30, 141);
 				for (MouseListener l : listeners)
 				{
 					t.addMouseListener(l);
@@ -200,7 +201,6 @@ public class deviceDialog
 		frame.add(panel2);
 		frame.add(sliderStatus);
 		frame.add(panel3);
-
 		frame.add(panel4);
 		frame.add(faderatesliderStatus);
 		frame.add(panel5);
@@ -212,9 +212,16 @@ public class deviceDialog
 		{
 			slider.setVisible(false);
 			faderateslider.setVisible(false);
-			//	sliderStatus.setText("Select On or Off for NON Dimming device");
 			sliderStatus.setVisible(false);
 			faderatesliderStatus.setText("Select On or Off for NON Dimming device");
+			if(status == "1")
+			{
+				group.setSelected(onRadioButton.getModel(), true);
+			}
+			else
+			{
+				group.setSelected(onRadioButton.getModel(), false);
+			}
 		}
 		else
 		{
@@ -224,41 +231,25 @@ public class deviceDialog
 		frame.setVisible(true);
 	}	 
 
-
-	public static void sendDeviceCommand(String action, String device, String level, String faderate )
+	public static void sendDeviceCmd(int action, int deviceid, int level, int faderate)
 	{
-		String urlTemp = null;
+		moduleVariables mvInput = new moduleVariables();
 
-		urlTemp = "http://" + upbClientWindow.upbServerIPAddress + ":" + upbClientWindow.upbServerCommandPort + "/upb?action=" + action + "&moduleid=" + device + "&level=" + level;
-		if(faderate != null && !faderate.isEmpty())
-		{
-			urlTemp += "&faderate=" + faderate;	
-		}
-		URL oracle = null;
-		try {
-			//	oracle = new URL("http://192.168.1.104:8080/upb?action=goto&moduleid=141&level=100");
-			oracle = new URL(urlTemp);
-		} catch (MalformedURLException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}
-		URLConnection yc;
-		try {
-			yc = oracle.openConnection();
-			BufferedReader in;
-			in = new BufferedReader(new InputStreamReader(
-					yc.getInputStream()));
-			String inputLine;
-			while ((inputLine = in.readLine()) != null) 
-				System.out.println(inputLine);
-			in.close();
-		} catch (IOException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}
+		mvInput.clear();
+		mvInput.level = level;
+		mvInput.fadeRate = faderate;
+		mvInput.moduleid = deviceid;
+		
+		mvInput.sourceid = Integer.parseInt(upbClientWindow.sourceID);
+		mvInput.networkid = Integer.parseInt(upbClientWindow.networkID);;
+		mvInput.isDevice = true;
+		mvInput.action = action;  // report State Command
+		buildCmd bc = new buildCmd();
 
+		bc.buildCmd(mvInput);
+		String	myCmd = mvInput.message.toString();
+		upbClientWindow.buildJSONCommand(0,myCmd, deviceid);
 	}
-
 
 	public static void removeMinMaxClose(Component comp)
 	{
