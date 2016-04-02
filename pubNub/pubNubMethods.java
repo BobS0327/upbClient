@@ -28,8 +28,6 @@ import com.pubnub.api.PubnubException;
 import upbClient.upbClientWindow;
 
 public class pubNubMethods {
-//	String myChannel = "MountainTopIOT";
-//	Pubnub pubnub = new Pubnub("pub-c-01d2221b-3450-4c2a-b5de-aec0af4ce03e", "sub-c-0e48fa3e-e59e-11e5-9dc0-0619f8945a4f");
 		String myChannel = upbClientWindow.pubNubChannel;
 		Pubnub pubnub = new Pubnub(upbClientWindow.pubNubPublishKey, upbClientWindow.pubNubSubscribeKey);
 		
